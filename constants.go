@@ -1,0 +1,6 @@
+package main
+
+const (
+	TRELLODATEFORMAT = "2006-01-02T15:04:05.000Z"
+	PRETTYDATEFORMAT = "January 02 2006, 15:04:05 UTC"
+)

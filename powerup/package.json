@@ -1,0 +1,42 @@
+{
+  "main": "main.js",
+  "scripts": {
+    "watch": "find -name \"*.js\" ! -name \"bundle.js\" ! -path \"*node_modules*\" | entr browserifyinc -g aliasify -vd app.js -o bundle.js",
+    "build": "browserify -g aliasify app.js -o bundle.js",
+    "heroku-postbuild": "browserify -g aliasify powerup/app.js -o powerup/bundle.js && cd landing && npm install && ./node_modules/.bin/gulp"
+  },
+  "browserify": {
+    "transform": [
+      [
+        "bubleify",
+        {
+          "transforms": {
+            "dangerousTaggedTemplateString": true
+          },
+          "objectAssign": "xtend",
+          "sourceMap": true
+        }
+      ]
+    ]
+  },
+  "aliasify": {
+    "aliases": {
+      "react": "inferno-compat",
+      "react-dom": "inferno-compat"
+    }
+  },
+  "dependencies": {
+    "aliasify": "^2.1.0",
+    "browserify": "^14.4.0",
+    "browserify-incremental": "^3.1.1",
+    "bubleify": "^0.7.0",
+    "graphql-request": "^1.3.4",
+    "halogen": "^0.2.0",
+    "inferno": "^3.8.2",
+    "inferno-compat": "^3.8.2",
+    "inferno-component": "^3.8.2",
+    "inferno-hyperscript": "^3.8.2",
+    "isomorphic-fetch": "*",
+    "xtend": "^4.0.1"
+  }
+}

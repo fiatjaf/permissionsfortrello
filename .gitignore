@@ -1,0 +1,11 @@
+*.swp
+*.swo
+.env
+*.log
+browserify-cache.json
+node_modules
+bundle.js
+*.fasthttp.*
+*.DS_Store
+*package-lock.json
+
