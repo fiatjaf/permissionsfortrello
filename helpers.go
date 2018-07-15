@@ -110,22 +110,22 @@ func toJSONText(data interface{}) (v types.JSONText, err error) {
 	return
 }
 
-func saveBackupData(id string, data interface{}) (err error) {
+func saveBackupData(boardId, id string, data interface{}) (err error) {
 	v, err := toJSONText(data)
 	if err != nil {
 		return
 	}
 
 	_, err = pg.Exec(`
-INSERT INTO backups VALUES ($1, $2)
-ON CONFLICT (id) DO UPDATE SET data = backups.data || $2
-    `, id, v)
+INSERT INTO backups (id, board, data) VALUES ($1, $2, $3)
+ON CONFLICT (id) DO UPDATE SET board = $2, data = backups.data || $3
+    `, id, boardId, v)
 	return
 }
 
 func updateBackupData(
-	id string, initData interface{},
-	preupdate, updatefun string, value interface{},
+	boardId, id string, initData interface{},
+	initialize, updatefun string, value interface{},
 ) (err error) {
 	d, err := toJSONText(initData)
 	if err != nil {
@@ -138,27 +138,33 @@ func updateBackupData(
 	}
 
 	updatefun = strings.Replace(
-		strings.Replace(updatefun, "$init", "$2", -1),
-		"$arg", "$3", -1)
+		strings.Replace(updatefun, "$init", "$3", -1),
+		"$arg", "$4", -1)
 
-	preupdate = strings.Replace(
-		strings.Replace(preupdate, "$init", "$2", -1),
-		"$arg", "$3", -1)
+	initialize = strings.Replace(
+		strings.Replace(initialize, "$init", "$3", -1),
+		"$arg", "$4", -1)
 
 	_, err = pg.Exec(`
 WITH
-ins AS (
-  INSERT INTO backups VALUES ($1, $2)
-  ON CONFLICT (id) DO NOTHING
+init AS (
+  SELECT (`+initialize+`) AS data
+  FROM (
+    SELECT 0 AS idx, data FROM backups WHERE id = $1
+    UNION ALL
+    SELECT 1 AS idx, '{}'::jsonb AS data
+  ) AS whatever
+  ORDER BY idx LIMIT 1
 ),
 new AS (
-  SELECT (`+preupdate+`) AS data
-  FROM backups WHERE id = $1
+  SELECT (`+updatefun+`) AS data
+    FROM init
 )
-UPDATE backups SET data = `+updatefun+`
-FROM new
-WHERE id = $1
-    `, id, d, v)
+INSERT INTO backups (id, board, data) VALUES ($1, $2, (SELECT data FROM new))
+  ON CONFLICT (id) DO UPDATE
+    SET data = (SELECT data FROM new),
+        board = $2
+    `, id, boardId, d, v)
 	return
 }
 
@@ -176,7 +182,7 @@ func fetchBackupData(id string, data interface{}) (err error) {
 	return
 }
 
-func deleteBackupData(id string) (err error) {
-	_, err = pg.Exec(`DELETE FROM backups WHERE id = $1`, id)
+func deleteBackupData(boardId, id string) (err error) {
+	_, err = pg.Exec(`DELETE FROM backups WHERE id = $1 AND board = $2`, id, boardId)
 	return
 }

@@ -3,11 +3,14 @@ package main
 import (
 	"strings"
 
+	"github.com/kr/pretty"
 	"github.com/lib/pq"
 	"github.com/rs/zerolog"
 )
 
 func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
+	b := wh.Action.Data.Board.Id
+
 	switch wh.Action.Type {
 	case "createCard", "copyCard", "convertToCardFromCheckItem":
 		err = trello("delete", "/1/cards/"+wh.Action.Data.Card.Id, nil, nil)
@@ -50,7 +53,7 @@ func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
 				wh.Action.MemberCreator.Username + "--"
 		} else {
 			card.Id = ""
-			deleteBackupData(wh.Action.Data.Card.Id)
+			deleteBackupData(b, wh.Action.Data.Card.Id)
 		}
 
 		card.IdList = wh.Action.Data.List.Id
@@ -61,7 +64,7 @@ func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
 			break
 		}
 
-		err = saveBackupData(card.Id, card)
+		err = saveBackupData(b, card.Id, card)
 	case "updateCard":
 		data := make(map[string]interface{})
 		for changedKey, changedValue := range wh.Action.Data.Old {
@@ -95,11 +98,37 @@ func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
 		}
 		err = trello("put", "/1/checklists/"+wh.Action.Data.Checklist.Id, data, nil)
 	case "removeChecklistFromCard":
+		// fetch backups first
+		var items []CheckItem
+		err = pg.Select(&items, `
+SELECT * FROM (
+  SELECT jsonb_to_recordset(ci.data)
+    AS checkitem(state text, name text, pos real)
+  FROM backups AS ci
+  WHERE ci.id IN (
+    SELECT jsonb_array_elements(cl.data->'idCheckItems')
+    FROM backups AS cl
+    WHERE id = $1
+  )
+) AS cir
+        `, wh.Action.Data.Checklist.Id)
+
+		// remove all references to checklist and checkitems below from database
+		onAllowed(logger, trello, wh)
+
+		// now proceed to recreate
+		var newlist Checklist
 		err = trello("post", "/1/cards/"+wh.Action.Data.Card.Id+"/checklists", struct {
 			Name string `json:"name"`
-		}{wh.Action.Data.Checklist.Name}, nil)
+		}{wh.Action.Data.Checklist.Name}, &newlist)
 
-		// TODO: recreate checkitems here, they must be backed up before.
+		if err == nil {
+			for _, item := range items {
+				var newitem CheckItem
+				go trello("post", "/1/checklists/"+newlist.Id+
+					"/checkItems", item, &newitem)
+			}
+		}
 	case "createCheckItem":
 		err = trello("delete",
 			"/1/checklists/"+wh.Action.Data.Checklist.Id+
@@ -163,9 +192,9 @@ func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
 			break
 		}
 
-		go saveBackupData(newatt.Id, att)
-		go saveBackupData(att.Id, newatt)
-		go deleteBackupData(wh.Action.Data.Attachment.Id)
+		go saveBackupData(b, newatt.Id, att)
+		go saveBackupData(b, att.Id, newatt)
+		go deleteBackupData(b, wh.Action.Data.Attachment.Id)
 	case "addLabelToCard":
 		err = trello("delete",
 			"/1/cards/"+wh.Action.Data.Card.Id+
@@ -185,7 +214,7 @@ func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
 			break
 		}
 
-		go deleteBackupData(wh.Action.Data.Label.Id)
+		go deleteBackupData(b, wh.Action.Data.Label.Id)
 
 		label.IdBoard = wh.Action.Data.Board.Id
 		label.Id = ""
@@ -194,7 +223,7 @@ func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
 		if err != nil {
 			break
 		}
-		err = saveBackupData(newlabel.Id, newlabel)
+		err = saveBackupData(b, newlabel.Id, newlabel)
 
 		// fetch ids of all cards that had this label
 		// update them on trello and on the database to use
@@ -261,11 +290,7 @@ RETURNING id
 
 	if err != nil {
 		if perr, ok := err.(*pq.Error); ok {
-			log.Print(perr.Where)
-			log.Print(perr.Position)
-			log.Print(perr.Hint)
-			log.Print(perr.Column)
-			log.Print(perr.Message)
+			pretty.Log(perr)
 		}
 
 		logger.Warn().

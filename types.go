@@ -33,6 +33,8 @@ type Label struct {
 type Card struct {
 	Id                string            `json:"id,omitempty"`
 	ShortLink         string            `json:"shortLink,omitempty"`
+	IdBoard           string            `json:"idBoard,omitempty"`
+	IdList            string            `json:"idList,omitempty"`
 	Name              string            `json:"name,omitempty"`
 	Desc              string            `json:"desc,omitempty"`
 	Due               string            `json:"due,omitempty"`
@@ -41,17 +43,17 @@ type Card struct {
 	IdAttachmentCover string            `json:"idAttachmentCover,omitempty"`
 	IdMembers         []string          `json:"idMembers,omitempty"`
 	IdLabels          []string          `json:"idLabels,omitempty"`
+	IdChecklists      []string          `json:"idChecklists,omitempty"`
 	Checklists        []Checklist       `json:"checklists,omitempty"`
 	Attachments       []Attachment      `json:"attachments,omitempty"`
-	IdBoard           string            `json:"idBoard,omitempty"`
-	IdList            string            `json:"idList,omitempty"`
 	CustomFieldItems  []CustomFieldItem `json:"customFieldItems,omitempty"`
 }
 
 type Checklist struct {
-	Id         string      `json:"id,omitempty"`
-	Name       string      `json:"name,omitempty"`
-	CheckItems []CheckItem `json:"checkItems,omitempty"`
+	Id           string      `json:"id,omitempty"`
+	Name         string      `json:"name,omitempty"`
+	CheckItems   []CheckItem `json:"checkItems,omitempty"`
+	IdCheckItems []string    `json:"idCheckItems,omitempty"`
 }
 
 type CheckItem struct {
