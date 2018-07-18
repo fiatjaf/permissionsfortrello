@@ -16,6 +16,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/kelseyhightower/envconfig"
 	_ "github.com/lib/pq"
+	"github.com/minio/minio-go"
 	"github.com/rs/zerolog"
 	"gopkg.in/redis.v5"
 	"gopkg.in/tylerb/graceful.v1"
@@ -29,12 +30,16 @@ type Settings struct {
 	TrelloApiKey    string `envconfig:"TRELLO_API_KEY" required:"true"`
 	TrelloApiSecret string `envconfig:"TRELLO_API_SECRET"`
 	RedisURL        string `envconfig:"REDIS_URL"`
+	AWSKeyId        string `envconfig:"AWS_KEY_ID" required:"true"`
+	AWSSecretKey    string `envconfig:"AWS_SECRET_KEY" required:"true"`
+	S3BucketName    string `envconfig:"S3_BUCKET_NAME" required:"true"`
 }
 
 var err error
 var s Settings
 var pg *sqlx.DB
 var rds *redis.Client
+var ms3 *minio.Client
 var router *mux.Router
 var schema graphql.Schema
 var log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -46,6 +51,14 @@ func main() {
 	}
 
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+
+	// minio s3 client
+	ms3, _ = minio.New(
+		"s3.amazonaws.com",
+		s.AWSKeyId,
+		s.AWSSecretKey,
+		true,
+	)
 
 	// graphql schema
 	schema, err = graphql.NewSchema(schemaConfig)

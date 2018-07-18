@@ -8,7 +8,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
+func onUnallowed(logger zerolog.Logger, token string, wh Webhook) {
+	trello := makeTrelloClient(token)
 	b := wh.Action.Data.Board.Id
 
 	switch wh.Action.Type {
@@ -22,24 +23,48 @@ func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
 					Name string `json:"name"`
 				}{wh.Action.Data.Card.Name}, nil)
 
-			// TODO: if we're going to track checkitems we could restore
-			//       state and position here.
+			// attempt to fetch the checkItem data
+			// so we can restore its position and state
+			var checkItemId string
+			checkItemId, err = itemJustConvertedIntoCard(
+				wh.Action.Data.Card.Name,
+				wh.Action.Data.Checklist.Id,
+			)
+			if err != nil {
+				break
+			}
+			var checkItemData CheckItem
+			err = fetchBackupData(checkItemId, &checkItemData)
+			if err != nil {
+				break
+			}
+			checkItemData.Id = ""
+			err = trello("put",
+				"/1/cards/"+wh.Action.Data.Checklist.Id+
+					"/checkItem/"+checkItemId,
+				checkItemData, nil)
 		}
 	case "moveCardFromBoard":
-		err = trello("put", "/1/cards/"+wh.Action.Data.Card.Id, struct {
-			IdBoard string `json:"idBoard"`
-			IdList  string `json:"idList"`
-		}{
-			wh.Action.Data.Board.Id,
-			wh.Action.Data.List.Id,
-		}, nil)
-		// TODO: if we're going to track pos we could restore it here.
+		// move the card back to its previous list and board
+		wh.Action.Data.Card.IdBoard = wh.Action.Data.Board.Id
+		wh.Action.Data.Card.IdList = wh.Action.Data.List.Id
 
-		if strings.Index(err.Error(), "401") != -1 {
+		// attempt to restore data from our backup
+		var backedCard Card
+		err = fetchBackupData(wh.Action.Data.Card.Id, &backedCard)
+		if err == nil {
+			wh.Action.Data.Card.Pos = backedCard.Pos
+			wh.Action.Data.Card.IdLabels = backedCard.IdLabels
+			wh.Action.Data.Card.IdMembers = backedCard.IdMembers
+		}
+
+		err = trello("put", "/1/cards/"+wh.Action.Data.Card.Id, wh.Action.Data.Card, nil)
+		if err != nil && strings.Index(err.Error(), "401") != -1 {
 			// we don't have access to the board to which this card was moved, so
 			// we must recreate the card.
 			wh.Action.Type = "deleteCard"
-			onUnallowed(logger, trello, wh)
+			onUnallowed(logger, token, wh)
+			err = nil
 		}
 	case "moveCardToBoard":
 		err = trello("put", "/1/cards/"+wh.Action.Data.Card.Id, struct {
@@ -59,12 +84,30 @@ func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
 		card.IdList = wh.Action.Data.List.Id
 		card.IdBoard = wh.Action.Data.Board.Id
 
+		idChecklists := card.IdChecklists
+		idAttachments := card.IdAttachments
+
 		err = trello("post", "/1/cards", card, &card)
 		if err != nil {
 			break
 		}
+		go saveBackupData(b, card.Id, card)
 
-		err = saveBackupData(b, card.Id, card)
+		// attempt to restore checklists
+		for _, idChecklist := range idChecklists {
+			wh.Action.Type = "removeChecklistFromCard"
+			wh.Action.Data.Checklist.Id = idChecklist
+			wh.Action.Data.Card.Id = card.Id
+			onUnallowed(logger, token, wh)
+		}
+
+		// attempt to restore attachments
+		for _, idAttachment := range idAttachments {
+			wh.Action.Type = "deleteAttachmentFromCard"
+			wh.Action.Data.Attachment.Id = idAttachment
+			wh.Action.Data.Card.Id = card.Id
+			onUnallowed(logger, token, wh)
+		}
 	case "updateCard":
 		data := make(map[string]interface{})
 		for changedKey, changedValue := range wh.Action.Data.Old {
@@ -99,22 +142,26 @@ func onUnallowed(logger zerolog.Logger, trello trelloClient, wh Webhook) {
 		err = trello("put", "/1/checklists/"+wh.Action.Data.Checklist.Id, data, nil)
 	case "removeChecklistFromCard":
 		// fetch backups first
-		var items []CheckItem
+		items := make([]CheckItem, 0, 10)
 		err = pg.Select(&items, `
-SELECT * FROM (
-  SELECT jsonb_to_recordset(ci.data)
-    AS checkitem(state text, name text, pos real)
-  FROM backups AS ci
-  WHERE ci.id IN (
-    SELECT jsonb_array_elements(cl.data->'idCheckItems')
-    FROM backups AS cl
-    WHERE id = $1
-  )
-) AS cir
+SELECT
+  ci.data->>'state' AS state,
+  ci.data->>'name' AS name,
+  coalesce(ci.data->>'pos', '0')::real AS pos
+FROM backups AS ci
+WHERE to_jsonb(ci.id) IN (
+  SELECT jsonb_array_elements(cl.data->'idCheckItems')
+  FROM backups AS cl
+  WHERE cl.id = $1
+)
         `, wh.Action.Data.Checklist.Id)
+		if err != nil {
+			logger.Warn().Err(err).Str("checklist", wh.Action.Data.Checklist.Id).
+				Msg("failed to fetch backup checkitems")
+		}
 
-		// remove all references to checklist and checkitems below from database
-		onAllowed(logger, trello, wh)
+		// remove all references to checklist and checkItems below from database
+		onAllowed(logger, token, wh)
 
 		// now proceed to recreate
 		var newlist Checklist
@@ -125,6 +172,7 @@ SELECT * FROM (
 		if err == nil {
 			for _, item := range items {
 				var newitem CheckItem
+				item.Checked = item.State == "complete"
 				go trello("post", "/1/checklists/"+newlist.Id+
 					"/checkItems", item, &newitem)
 			}
@@ -156,21 +204,17 @@ SELECT * FROM (
 			}{prevState}, nil)
 	case "deleteCheckItem":
 		err = trello("post",
-			"/1/checklists/"+wh.Action.Data.Checklist.Id+"/checkItems", struct {
-				Name    string  `json:"name"`
-				Pos     float64 `json:"pos"`
-				Checked bool    `json:"checked"`
-			}{
-				wh.Action.Data.CheckItem.Name,
-				wh.Action.Data.CheckItem.Pos,
-				wh.Action.Data.CheckItem.State == "complete",
+			"/1/checklists/"+wh.Action.Data.Checklist.Id+"/checkItems", CheckItem{
+				Name:    wh.Action.Data.CheckItem.Name,
+				Pos:     wh.Action.Data.CheckItem.Pos,
+				Checked: wh.Action.Data.CheckItem.State == "complete",
 			}, nil)
 	case "commentCard":
 		err = trello("delete",
 			"/1/actions/"+wh.Action.Id, nil, nil)
 
 		// update comment and delete comment are always allowed
-		// as Trello only allows them for the comment owners anyway.
+		// as Trello only allows these actions for the comment owners anyway.
 	case "addAttachmentToCard":
 		err = trello("delete",
 			"/1/cards/"+wh.Action.Data.Card.Id+"/attachments/"+wh.Action.Data.Attachment.Id,
@@ -178,23 +222,31 @@ SELECT * FROM (
 	case "deleteAttachmentFromCard":
 		var att Attachment
 		err = fetchBackupData(wh.Action.Data.Attachment.Id, &att)
-		if err != nil {
-			break
-		}
-
-		var newatt Attachment
-		err = trello("post",
-			"/1/cards/"+wh.Action.Data.Card.Id+"/attachments", Attachment{
-				Url:  att.Url,
-				Name: att.Name,
-			}, &newatt)
-		if err != nil {
-			break
-		}
-
-		go saveBackupData(b, newatt.Id, att)
-		go saveBackupData(b, att.Id, newatt)
 		go deleteBackupData(b, wh.Action.Data.Attachment.Id)
+		if err != nil {
+			break
+		}
+
+		// remove the id of this deleted attachment from the idAttachments list
+		// in the backed up card
+		go updateBackupData(b, wh.Action.Data.Card.Id, wh.Action.Data.Card,
+			`'{"idAttachments": []}'::jsonb || $init || data`,
+			`jsonb_set(data, '{idAttachments}', (data->'idAttachments') - ($arg::jsonb#>>'{}'))`,
+			wh.Action.Data.Attachment.Id,
+		)
+
+		// when we restore the backup or readd the previous attachment link
+		// the onAllowed action will be triggered and the new attachment
+		// will be saved and backups will be updated
+		if attachmentIsUploaded(att) {
+			err = restoreFromS3(att.Id, att.Name, wh.Action.Data.Card.Id, token)
+		} else {
+			att.Id = ""
+			err = trello("post", "/1/cards/"+wh.Action.Data.Card.Id+
+				"/attachments", att, nil)
+		}
+
+		go deleteFromS3(wh.Action.Data.Attachment.Id)
 	case "addLabelToCard":
 		err = trello("delete",
 			"/1/cards/"+wh.Action.Data.Card.Id+
@@ -223,7 +275,7 @@ SELECT * FROM (
 		if err != nil {
 			break
 		}
-		err = saveBackupData(b, newlabel.Id, newlabel)
+		go saveBackupData(b, newlabel.Id, newlabel)
 
 		// fetch ids of all cards that had this label
 		// update them on trello and on the database to use
@@ -244,6 +296,7 @@ RETURNING id
 		}
 
 		for _, cardId := range cardIds {
+			// add the label on trello
 			go trello("post", "/1/cards/"+cardId+"/idLabels", Value{newlabel.Id}, nil)
 		}
 	case "updateLabel":

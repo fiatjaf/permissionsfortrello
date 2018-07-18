@@ -186,3 +186,27 @@ func deleteBackupData(boardId, id string) (err error) {
 	_, err = pg.Exec(`DELETE FROM backups WHERE id = $1 AND board = $2`, id, boardId)
 	return
 }
+
+func itemJustConvertedIntoCard(cardName, parentChecklistId string) (id string, err error) {
+	err = pg.Get(&id, `
+WITH
+potential_checkitems AS (
+  SELECT id, data->'id' AS json_id FROM backups
+  WHERE data->>'name' = $1 AND NOT data ? 'shortLink'
+),
+parent_checklist AS (
+  SELECT id, data->'idCheckItems' AS idCheckItems FROM backups
+  WHERE id = $2
+)
+SELECT potential_checkitems.id
+FROM potential_checkitems
+INNER JOIN parent_checklist ON potential_checkitems.json_id <@ idCheckItems
+LIMIT 1
+    `, cardName, parentChecklistId)
+	return
+}
+
+func attachmentIsUploaded(attachment Attachment) bool {
+	attHost := strings.Split(attachment.Url, "/")[2]
+	return attHost == "trello-attachments.s3.amazonaws.com"
+}

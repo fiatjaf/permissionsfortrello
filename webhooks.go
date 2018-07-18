@@ -51,9 +51,9 @@ SELECT token FROM boards WHERE id = $1 AND enabled = true
 
 	if userAllowed(trello, userId, boardId, cardId) {
 		logger.Info().Msg("allowed")
-		onAllowed(logger, trello, wh)
+		onAllowed(logger, token, wh)
 	} else {
 		logger.Info().Msg("disallowed: resetting")
-		onUnallowed(logger, trello, wh)
+		onUnallowed(logger, token, wh)
 	}
 }

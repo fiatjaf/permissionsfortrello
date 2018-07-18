@@ -39,11 +39,13 @@ type Card struct {
 	Desc              string            `json:"desc,omitempty"`
 	Due               string            `json:"due,omitempty"`
 	DueComplete       bool              `json:"dueComplete,omitempty"`
+	Closed            bool              `json:"closed,omitempty"`
 	Pos               float64           `json:"pos,omitempty"`
 	IdAttachmentCover string            `json:"idAttachmentCover,omitempty"`
 	IdMembers         []string          `json:"idMembers,omitempty"`
 	IdLabels          []string          `json:"idLabels,omitempty"`
 	IdChecklists      []string          `json:"idChecklists,omitempty"`
+	IdAttachments     []string          `json:"idAttachments,omitempty"`
 	Checklists        []Checklist       `json:"checklists,omitempty"`
 	Attachments       []Attachment      `json:"attachments,omitempty"`
 	CustomFieldItems  []CustomFieldItem `json:"customFieldItems,omitempty"`
@@ -57,10 +59,11 @@ type Checklist struct {
 }
 
 type CheckItem struct {
-	Id    string  `json:"id,omitempty"`
-	Name  string  `json:"name,omitempty"`
-	State string  `json:"state,omitempty"`
-	Pos   float64 `json:"pos,omitempty"`
+	Id      string  `json:"id,omitempty"`
+	Name    string  `json:"name,omitempty"`
+	State   string  `json:"state,omitempty"`
+	Checked bool    `json:"checked,omitempty"`
+	Pos     float64 `json:"pos,omitempty"`
 }
 
 type Attachment struct {
