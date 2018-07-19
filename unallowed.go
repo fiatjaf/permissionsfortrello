@@ -1,7 +1,10 @@
 package main
 
 import (
+	"database/sql"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kr/pretty"
 	"github.com/lib/pq"
@@ -71,6 +74,41 @@ func onUnallowed(logger zerolog.Logger, token string, wh Webhook) {
 			IdBoard string `json:"idBoard"`
 		}{wh.Action.Data.BoardSource.Id}, nil)
 	case "deleteCard":
+		// fetch comments and erase them (so they don't get fetched again)
+		var comments []Comment
+		err = pg.Select(&comments, `
+WITH
+comments AS (
+  SELECT * FROM (
+    SELECT DISTINCT ON (id) id, date, text, userid, username
+    FROM (
+      SELECT
+        c->>'id' AS id,
+        c->>'date' AS date,
+        c->>'text' AS text,
+        c->>'userid' AS userid,
+        c->>'username' AS username
+      FROM (
+        SELECT jsonb_array_elements(data->'comments') AS c FROM backups
+        WHERE id = $1
+      )x
+    )y
+    ORDER BY id, date DESC
+  )z
+  WHERE text != ''
+  ORDER BY date
+),
+del AS (
+  UPDATE backups SET data = data - 'comments'
+  WHERE id = $1
+)
+SELECT * FROM comments
+        `, wh.Action.Data.Card.Id)
+		if err != nil && err != sql.ErrNoRows {
+			break
+		}
+
+		// fetch card attributes
 		var card Card
 		err = fetchBackupData(wh.Action.Data.Card.Id, &card)
 		if err != nil {
@@ -78,20 +116,22 @@ func onUnallowed(logger zerolog.Logger, token string, wh Webhook) {
 				wh.Action.MemberCreator.Username + "--"
 		} else {
 			card.Id = ""
-			deleteBackupData(b, wh.Action.Data.Card.Id)
+			go deleteBackupData(b, wh.Action.Data.Card.Id)
 		}
 
 		card.IdList = wh.Action.Data.List.Id
 		card.IdBoard = wh.Action.Data.Board.Id
 
+		// get these before they're overwritten
 		idChecklists := card.IdChecklists
 		idAttachments := card.IdAttachments
 
+		// recreate the card and get the new card object
+		// (the backup will be saved automatically by unAllowed)
 		err = trello("post", "/1/cards", card, &card)
 		if err != nil {
 			break
 		}
-		go saveBackupData(b, card.Id, card)
 
 		// attempt to restore checklists
 		for _, idChecklist := range idChecklists {
@@ -107,6 +147,52 @@ func onUnallowed(logger zerolog.Logger, token string, wh Webhook) {
 			wh.Action.Data.Attachment.Id = idAttachment
 			wh.Action.Data.Card.Id = card.Id
 			onUnallowed(logger, token, wh)
+		}
+
+		// attempt to restore comments
+		var batch string
+		var potentialbatch string
+		for _, comment := range comments {
+			var nextcomment string
+
+			if strings.HasPrefix(strings.TrimSpace(comment.Text), "_On") {
+				nextcomment = comment.Text
+			} else {
+				dateformatted := "a date"
+				dateparsed, err := time.Parse("2006-01-02T15:04:05.000Z", comment.Date)
+				if err == nil {
+					dateformatted = dateparsed.Format("Mon, Jan 2 2006, 15:04")
+				}
+				textformatted := strings.Join(strings.Split(comment.Text, "\n"), "\n> ")
+				nextcomment = fmt.Sprintf(`
+_On %s [%s](https://trello.com/%s) wrote:_
+
+> %s
+`,
+					dateformatted, comment.Username,
+					comment.UserId, textformatted)
+			}
+
+			potentialbatch = nextcomment + potentialbatch
+			if len(potentialbatch) < 16384 {
+				batch = potentialbatch
+			} else {
+				// this will trigger an onAllowed action so we don't have to bother
+				// with updating the backups.
+				trello("post", "/1/cards/"+card.Id+"/actions/comments", Comment{
+					Text: batch,
+				}, nil)
+
+				potentialbatch = nextcomment
+			}
+		}
+
+		// post the last batch
+		batch = potentialbatch
+		if len(batch) > 10 {
+			trello("post", "/1/cards/"+card.Id+"/actions/comments", Comment{
+				Text: batch,
+			}, nil)
 		}
 	case "updateCard":
 		data := make(map[string]interface{})
@@ -142,7 +228,7 @@ func onUnallowed(logger zerolog.Logger, token string, wh Webhook) {
 		err = trello("put", "/1/checklists/"+wh.Action.Data.Checklist.Id, data, nil)
 	case "removeChecklistFromCard":
 		// fetch backups first
-		items := make([]CheckItem, 0, 10)
+		var items []CheckItem
 		err = pg.Select(&items, `
 SELECT
   ci.data->>'state' AS state,
@@ -270,33 +356,28 @@ WHERE to_jsonb(ci.id) IN (
 
 		label.IdBoard = wh.Action.Data.Board.Id
 		label.Id = ""
+
+		// create the new label and get its id
 		var newlabel Label
 		err = trello("post", "/1/labels", label, &newlabel)
 		if err != nil {
 			break
 		}
-		go saveBackupData(b, newlabel.Id, newlabel)
+		// (the backup will be saved automatically by unAllowed)
 
 		// fetch ids of all cards that had this label
-		// update them on trello and on the database to use
-		// the new label.
 		var cardIds []string
 		err = pg.Select(&cardIds, `
-UPDATE backups
-SET data = jsonb_set(
-  data,
-  '{idLabels}',
-  ((data->'idLabels') - $1) || to_jsonb($2::text)
-)
+SELECT id FROM backups
 WHERE data @> jsonb_build_object('idLabels', jsonb_build_array($1::text))
-RETURNING id
-        `, wh.Action.Data.Label.Id, newlabel.Id)
+        `, wh.Action.Data.Label.Id)
 		if err != nil {
 			break
 		}
 
 		for _, cardId := range cardIds {
 			// add the label on trello
+			// the backups will be created by onAllowed
 			go trello("post", "/1/cards/"+cardId+"/idLabels", Value{newlabel.Id}, nil)
 		}
 	case "updateLabel":

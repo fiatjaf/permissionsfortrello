@@ -137,6 +137,33 @@ func onAllowed(logger zerolog.Logger, token string, wh Webhook) {
 			`jsonb_set(data, '{idCheckItems}', (data->'idCheckItems') - ($arg::jsonb#>>'{}'))`,
 			wh.Action.Data.CheckItem.Id,
 		)
+	case "commentCard", "updateComment", "deleteComment":
+		// comments will be saved in an immutable log
+		// so if a comment is added, then edited, then deleted
+		// we must match their ids later and use the last entry
+
+		id := wh.Action.Data.Action.Id
+		if id == "" {
+			id = wh.Action.Id
+		}
+
+		text := wh.Action.Data.Action.Text
+		if text == "" {
+			text = wh.Action.Data.Text
+		}
+
+		comment := Comment{
+			Id:       id,
+			Text:     text,
+			UserId:   wh.Action.MemberCreator.Id,
+			Username: wh.Action.MemberCreator.Username,
+			Date:     wh.Action.Date,
+		}
+
+		err = updateBackupData(b, wh.Action.Data.Card.Id, wh.Action.Data.Card,
+			`'{"comments": []}'::jsonb || $init || data`,
+			`jsonb_set(data, '{comments}', (data->'comments') || $arg)`,
+			comment)
 	case "addAttachmentToCard":
 		if attachmentIsUploaded(wh.Action.Data.Attachment) {
 			// this file was uploaded on Trello, we must save a

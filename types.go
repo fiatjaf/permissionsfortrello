@@ -44,11 +44,13 @@ type Card struct {
 	IdAttachmentCover string            `json:"idAttachmentCover,omitempty"`
 	IdMembers         []string          `json:"idMembers,omitempty"`
 	IdLabels          []string          `json:"idLabels,omitempty"`
-	IdChecklists      []string          `json:"idChecklists,omitempty"`
-	IdAttachments     []string          `json:"idAttachments,omitempty"`
 	Checklists        []Checklist       `json:"checklists,omitempty"`
 	Attachments       []Attachment      `json:"attachments,omitempty"`
 	CustomFieldItems  []CustomFieldItem `json:"customFieldItems,omitempty"`
+
+	IdChecklists  []string  `json:"idChecklists,omitempty"`
+	IdAttachments []string  `json:"idAttachments,omitempty"`
+	Comments      []Comment `json:"comments,omitempty"`
 }
 
 type Checklist struct {
@@ -75,6 +77,10 @@ type Attachment struct {
 type Comment struct {
 	Id   string `json:"id,omitempty"`
 	Text string `json:"text,omitempty"`
+
+	Date     string `json:"date,omitempty"`
+	UserId   string `json:"userid,omitempty"`
+	Username string `json:"username,omitempty"`
 }
 
 type IdName struct {
