@@ -50,11 +50,7 @@ func userAllowed(trello trelloClient, userId, boardId, cardId string) bool {
 	}
 
 	// check board and team admins
-	var br []struct {
-		IdMember      string `json:"idMember"`
-		MemberType    string `json:"memberType"`
-		OrgMemberType string `json:"orgMemberType"`
-	}
+	var br []Membership
 	err = trello("get", "/1/boards/"+boardId+"/memberships?member=false&orgMemberType=true", nil, &br)
 	if err != nil {
 		log.Warn().Str("board", boardId).Err(err).Msg("failed to fetch memberships")

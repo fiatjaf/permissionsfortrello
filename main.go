@@ -1,22 +1,20 @@
 package main
 
 import (
-	"context"
-	"crypto/sha256"
-	"fmt"
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
+	"text/template"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 	"github.com/graphql-go/graphql"
-	"github.com/graphql-go/handler"
 	"github.com/jmoiron/sqlx"
 	"github.com/kelseyhightower/envconfig"
 	_ "github.com/lib/pq"
 	"github.com/minio/minio-go"
+	"github.com/mrjones/oauth"
 	"github.com/rs/zerolog"
 	"gopkg.in/redis.v5"
 	"gopkg.in/tylerb/graceful.v1"
@@ -37,9 +35,12 @@ type Settings struct {
 
 var err error
 var s Settings
+var c *oauth.Consumer
 var pg *sqlx.DB
 var rds *redis.Client
 var ms3 *minio.Client
+var tmpl *template.Template
+var store sessions.Store
 var router *mux.Router
 var schema graphql.Schema
 var log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -51,6 +52,10 @@ func main() {
 	}
 
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	log = log.With().Timestamp().Logger()
+
+	// cookie store
+	store = sessions.NewCookieStore([]byte(s.SecretKey))
 
 	// minio s3 client
 	ms3, _ = minio.New(
@@ -60,12 +65,22 @@ func main() {
 		true,
 	)
 
-	// graphql schema
-	schema, err = graphql.NewSchema(schemaConfig)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create graphql schema")
-	}
-	handler := handler.New(&handler.Config{Schema: &schema})
+	// templates
+	tmpl = template.Must(template.New("~").ParseGlob("templates/*.html"))
+
+	// oauth consumer
+	c = oauth.NewConsumer(
+		s.TrelloApiKey,
+		s.TrelloApiSecret,
+		oauth.ServiceProvider{
+			RequestTokenUrl:   "https://trello.com/1/OAuthGetRequestToken",
+			AuthorizeTokenUrl: "https://trello.com/1/OAuthAuthorizeToken",
+			AccessTokenUrl:    "https://trello.com/1/OAuthGetAccessToken",
+		},
+	)
+	c.AdditionalAuthorizationUrlParams["name"] = "Permissions for Trello"
+	c.AdditionalAuthorizationUrlParams["scope"] = "read,write,account"
+	c.AdditionalAuthorizationUrlParams["expiration"] = "never"
 
 	// postgres connection
 	pg, err = sqlx.Connect("postgres", s.PostgresURL)
@@ -91,32 +106,12 @@ func main() {
 	// define routes
 	router = mux.NewRouter()
 
-	router.Path("/_graphql").Methods("POST").HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			var secret string
-			if p := strings.Split(r.Header.Get("Authorization"), " "); len(p) == 2 {
-				secret = p[1]
-			}
-
-			var board string
-
-			if fmt.Sprintf("%x",
-				sha256.Sum256([]byte(s.SecretKey+":"+r.Header.Get("Board"))),
-			) == secret {
-				board = r.Header.Get("Board")
-			}
-
-			ctx := context.WithValue(
-				context.TODO(),
-				"board", board,
-			)
-
-			w.Header().Set("Content-Type", "application/json")
-
-			handler.ContextHandler(ctx, w, r)
-		},
-	)
-	router.Path("/_/webhooks/board").Methods("HEAD").HandlerFunc(ReturnOk)
+	router.Path("/").Methods("GET").HandlerFunc(ServeIndex)
+	router.Path("/auth").Methods("GET").HandlerFunc(TrelloAuth)
+	router.Path("/auth/callback").Methods("GET").HandlerFunc(TrelloAuthCallback)
+	router.Path("/account").Methods("GET").HandlerFunc(ServeAccount)
+	router.Path("/setBoard").Methods("POST").HandlerFunc(handleSetupBoard)
+	router.Path("/_/webhooks/board").Methods("HEAD").HandlerFunc(returnOk)
 	router.Path("/_/webhooks/board").Methods("POST").HandlerFunc(handleWebhook)
 	router.PathPrefix("/powerup/").Methods("GET").HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -150,8 +145,4 @@ func main() {
 	// start the server
 	log.Info().Str("port", os.Getenv("PORT")).Msg("listening.")
 	graceful.Run(":"+os.Getenv("PORT"), 10*time.Second, router)
-}
-
-func ReturnOk(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(200)
 }

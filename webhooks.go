@@ -39,7 +39,8 @@ func resetAction(wh Webhook) {
 	// check if card is enabled
 	var token string
 	err = pg.Get(&token, `
-SELECT token FROM boards WHERE id = $1 AND enabled = true
+SELECT token FROM boards
+WHERE id = $1
     `, boardId)
 
 	if err != nil {

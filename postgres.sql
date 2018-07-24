@@ -1,7 +1,8 @@
 CREATE TABLE boards (
   id text PRIMARY KEY,
-  enabled boolean NOT NULL DEFAULT false,
-  token text,
+  token text NOT NULL,
+  email text NOT NULL,
+  webhook_id text NOT NULL,
 
   CHECK (id != '')
 );
@@ -15,5 +16,4 @@ CREATE TABLE backups (
 );
 
 table boards;
-table backups;
-delete from backups;
+select id from backups;

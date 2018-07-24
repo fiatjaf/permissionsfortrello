@@ -1,0 +1,60 @@
+{{ template "head.html" . }}
+
+<style>
+button { width: 102px; }
+</style>
+
+
+<div class="main">
+  <h1>Hello, <span>{{ .Username }}</span></h1>
+  
+  <h3>Enable or disable <a href="#what">Permissions</a> on a board
+    <br>
+    <small>(You must be a board admin)</small>
+  </h3>
+  
+  <table>
+  {{ $email := .Email }}
+  {{ range .Boards }}
+    <tr>
+      <th>
+        <a href="https://trello.com/b/{{ .ShortLink }}" target="_blank" style="text-decoration: none">{{ .Name }}</a>
+      </th>
+      <td>
+        {{ if .Enabled }}
+          {{ if ne .Email $email }}enabled by {{ .Email }}{{ end }}
+        {{ end }}
+      </td>
+      <td><form style="display: inline" method="post" action="/setBoard">
+        <input type="hidden" name="board" value="{{ .Id }}">
+        {{ if .Enabled }}<input type="hidden" name="enabled" value="false">{{ end }}
+        {{ if .Enabled }}
+          <button type="submit" style="background: #A0006C">disable</button>
+        {{ else }}
+          <button type="submit">enable</button>
+        {{ end }}
+      </form></td>
+    <//tr>
+  {{ end }}
+  </table>
+
+  <br>
+  <br>
+  <h3 id="what">What happens when I enable Permissions?</h3>
+
+  <p>At the moment you enable it, we'll use your account to monitor all board activity. Every time an unauthorized user makes a change, we'll revert that change (the reversal will be a normal Trello action that will come from your account).</p>
+
+  <p>Users are only authorized to modify the cards in which they are added as members. That includes commenting, moving, changing names, descriptions and due dates, modifying checklists in any way and adding or deleting attachments. Users are also unauthorized to mess up with lists and labels globally and to delete even the cards they're members of. Board and team admins are authorized to changes of any kind anywhere.</p>
+
+  <p>We plan to add more fine-grained permissions over time, so your feedback is very important here. What kind of fine-grained control do you want to see?</p>
+
+  <p>To revert changes that involve deletion, we must keep a full backup of all data in the board. That is not good for you (your data will be stored at a third-party's database) nor for us (it is costly and troublesome to keep a system like this), but it is necessary for the full functionality of the tool. We are considering offering a no-backups data that will also work, although destructive actions may be poorly reversed. Let us know if you're interested in that.</p>
+
+  <form method="post" action="https://formspree.io/fiatjaf@gmail.com">
+    <legend>Give us feedback!</legend>
+    <input type="hidden" name="email" value="{{ .Email }}">
+    <textarea style="width: 100%; height: 200px; background: #fff4e1; padding: 10px;" name="message"></textarea>
+    <button type="submit">Submit</button>
+  </form>
+
+</div>

@@ -9,12 +9,15 @@ type User struct {
 }
 
 type Board struct {
-	Id        string `db:"id" json:"id,omitempty"`
-	ShortLink string `json:"shortLink,omitempty"`
-	Name      string `json:"name,omitempty"`
+	Id          string       `db:"id" json:"id,omitempty"`
+	ShortLink   string       `json:"shortLink,omitempty"`
+	Name        string       `json:"name,omitempty"`
+	Memberships []Membership `json:"memberships,omitempty"`
 
-	Token   string `db:"token" json:"-,omitempty"`
-	Enabled bool   `db:"enabled" json:"enabled,omitempty"`
+	Enabled   bool   `json:"-"`
+	Email     string `db:"email" json:"email"`
+	WebhookId string `db:"webhook_id" json:"-"`
+	Token     string `db:"token" json:"-"`
 }
 
 type List struct {
@@ -81,6 +84,13 @@ type Comment struct {
 	Date     string `json:"date,omitempty"`
 	UserId   string `json:"userid,omitempty"`
 	Username string `json:"username,omitempty"`
+}
+
+type Membership struct {
+	Id            string `json:"id,omitempty"`
+	IdMember      string `json:"idMember,omitempty"`
+	MemberType    string `json:"memberType,omitempty"`
+	OrgMemberType string `json:"orgMemberType,omitempty"`
 }
 
 type IdName struct {
@@ -154,10 +164,4 @@ type Model struct {
 
 type Value struct {
 	Value string `json:"value"`
-}
-
-type Result struct {
-	Ok    bool   `json:"ok,omitempty"`
-	Value string `json:"value,omitempty"`
-	Error string `json:"error,omitempty"`
 }
