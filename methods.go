@@ -1,6 +1,8 @@
 package main
 
-import "errors"
+import (
+	"errors"
+)
 
 func setupBoard(boardId, userId, email, token string, enabled bool) (err error) {
 	trello := makeTrelloClient(token)
@@ -30,11 +32,13 @@ func setupBoard(boardId, userId, email, token string, enabled bool) (err error) 
 proceed:
 	if enabled {
 		// create board webhook
-		var webhook Value
+		var webhook struct {
+			Id string `json:"id"`
+		}
 		err = trello("put", "/1/webhooks", struct {
 			CallbackURL string `json:"callbackURL"`
 			IdModel     string `json:"idModel"`
-		}{s.Host + "/_/webhooks/board", boardId}, webhook)
+		}{s.Host + "/_/webhooks/board", boardId}, &webhook)
 		if err != nil {
 			log.Warn().Err(err).Str("board", boardId).
 				Msg("failed to create board webhook")
@@ -45,7 +49,7 @@ proceed:
 		_, err = pg.Exec(`
 INSERT INTO boards (id, token, email, webhook_id)
 VALUES ($1, $2, $3, $4)
-    `, boardId, token, email, webhook.Value)
+    `, boardId, token, email, webhook.Id)
 		if err != nil {
 			log.Warn().Err(err).Str("board", boardId).
 				Msg("failed to set board")
@@ -63,7 +67,7 @@ WITH
 wd AS (
   SELECT webhook_id, token FROM boards
   WHERE id = $1
-)
+),
 del AS (
   DELETE FROM boards WHERE id = $1
 )

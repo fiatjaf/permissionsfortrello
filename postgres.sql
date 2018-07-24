@@ -4,7 +4,10 @@ CREATE TABLE boards (
   email text NOT NULL,
   webhook_id text NOT NULL,
 
-  CHECK (id != '')
+  CHECK (id != ''),
+  CHECK (token != ''),
+  CHECK (email != ''),
+  CHECK (webhook_id != '')
 );
 
 CREATE TABLE backups (
@@ -12,7 +15,8 @@ CREATE TABLE backups (
   board text,
   data jsonb NOT NULL,
 
-  CHECK (id != '')
+  CHECK (id != ''),
+  CHECK (board != '')
 );
 
 table boards;
