@@ -113,6 +113,9 @@ func main() {
 	router.Path("/setBoard").Methods("POST").HandlerFunc(handleSetupBoard)
 	router.Path("/_/webhooks/board").Methods("HEAD").HandlerFunc(returnOk)
 	router.Path("/_/webhooks/board").Methods("POST").HandlerFunc(handleWebhook)
+	router.PathPrefix("/public/").Methods("GET").Handler(
+		http.FileServer(http.Dir(".")),
+	)
 	router.PathPrefix("/powerup/").Methods("GET").HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -138,7 +141,7 @@ func main() {
 
 	router.Path("/favicon.ico").Methods("GET").HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFile(w, r, "./powerup/icon.png")
+			http.ServeFile(w, r, "./public/icon.png")
 			return
 		})
 
