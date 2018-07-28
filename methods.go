@@ -55,6 +55,12 @@ VALUES ($1, $2, $3, $4)
 				Msg("failed to set board")
 			return err
 		}
+
+		// perform initial backup
+		err = initialBackup(boardId, token)
+		if err != nil {
+			return err
+		}
 	}
 
 	if !enabled {

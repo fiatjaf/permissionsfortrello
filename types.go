@@ -13,6 +13,14 @@ type Board struct {
 	ShortLink   string       `json:"shortLink,omitempty"`
 	Name        string       `json:"name,omitempty"`
 	Memberships []Membership `json:"memberships,omitempty"`
+	Prefs       struct {
+		Invitations     string `json:"invitations,omitempty"`     // "admins"
+		PermissionLevel string `json:"permissionLevel,omitempty"` // "public"
+		Comments        string `json:"comments,omitempty" `       // "public"
+	} `json:"prefs,omitempty"`
+	Labels  []Label  `json:"labels,omitempty"`
+	Cards   []Card   `json:"cards,omitempty"`
+	Actions []Action `json:"actions,omitempty"`
 
 	Enabled   bool   `json:"-"`
 	Email     string `db:"email" json:"email"`
@@ -47,7 +55,6 @@ type Card struct {
 	IdAttachmentCover string            `json:"idAttachmentCover,omitempty"`
 	IdMembers         []string          `json:"idMembers,omitempty"`
 	IdLabels          []string          `json:"idLabels,omitempty"`
-	Checklists        []Checklist       `json:"checklists,omitempty"`
 	Attachments       []Attachment      `json:"attachments,omitempty"`
 	CustomFieldItems  []CustomFieldItem `json:"customFieldItems,omitempty"`
 

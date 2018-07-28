@@ -12,7 +12,7 @@ CREATE TABLE boards (
 
 CREATE TABLE backups (
   id text PRIMARY KEY,
-  board text,
+  board text REFERENCES boards (id) ON DELETE CASCADE,
   data jsonb NOT NULL,
 
   CHECK (id != ''),
