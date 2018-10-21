@@ -17,7 +17,6 @@ import (
 	"github.com/mrjones/oauth"
 	"github.com/rs/zerolog"
 	"gopkg.in/redis.v5"
-	"gopkg.in/tylerb/graceful.v1"
 )
 
 type Settings struct {
@@ -146,6 +145,12 @@ func main() {
 		})
 
 	// start the server
-	log.Info().Str("port", os.Getenv("PORT")).Msg("listening.")
-	graceful.Run(":"+os.Getenv("PORT"), 10*time.Second, router)
+	srv := &http.Server{
+		Handler:      router,
+		Addr:         "0.0.0.0:" + s.Port,
+		WriteTimeout: 25 * time.Second,
+		ReadTimeout:  25 * time.Second,
+	}
+	log.Info().Str("port", s.Port).Msg("listening.")
+	srv.ListenAndServe()
 }

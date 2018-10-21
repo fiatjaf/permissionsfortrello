@@ -20,4 +20,4 @@ CREATE TABLE backups (
 );
 
 table boards;
-select id from backups;
+select id, board from backups order by board;
