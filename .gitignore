@@ -8,4 +8,6 @@ bundle.js
 *.fasthttp.*
 *.DS_Store
 *package-lock.json
-
+permissionsfortrello
+packrd
+main-packr.go

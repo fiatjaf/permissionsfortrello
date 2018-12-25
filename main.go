@@ -7,6 +7,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/gobuffalo/packr/v2"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/graphql-go/graphql"
@@ -102,6 +103,9 @@ func main() {
 		}
 	}
 
+	// static assets
+	pubBox := packr.New("public", "./public")
+
 	// define routes
 	router = mux.NewRouter()
 
@@ -112,35 +116,13 @@ func main() {
 	router.Path("/setBoard").Methods("POST").HandlerFunc(handleSetupBoard)
 	router.Path("/_/webhooks/board").Methods("HEAD").HandlerFunc(returnOk)
 	router.Path("/_/webhooks/board").Methods("POST").HandlerFunc(handleWebhook)
-	router.PathPrefix("/public/").Methods("GET").Handler(
-		http.FileServer(http.Dir(".")),
-	)
-	router.PathPrefix("/powerup/").Methods("GET").HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-
-			if r.URL.Path[len(r.URL.Path)-5:] == ".html" {
-				http.ServeFile(w, r, "./powerup/basic.html")
-				return
-			}
-
-			if r.URL.Path == "/powerup/icon.svg" {
-				color := "#" + r.URL.Query().Get("color")
-				if color == "#" {
-					color = "#999999"
-				}
-				w.Header().Set("Content-Type", "image/svg+xml")
-				http.ServeFile(w, r, "icon.svg")
-				return
-			}
-
-			http.ServeFile(w, r, "."+r.URL.Path)
-		},
-	)
-
+	router.PathPrefix("/public/").Methods("GET").Handler(http.FileServer(pubBox))
 	router.Path("/favicon.ico").Methods("GET").HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFile(w, r, "./public/icon.png")
+			w.Header().Set("Content-Type", "image/svg+xml")
+			iconf, _ := pubBox.Open("icon.svg")
+			fstat, _ := iconf.Stat()
+			http.ServeContent(w, r, "icon.svg", fstat.ModTime(), iconf)
 			return
 		})
 
