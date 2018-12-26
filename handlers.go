@@ -11,7 +11,7 @@ import (
 )
 
 func ServeIndex(w http.ResponseWriter, r *http.Request) {
-	err = tmpl.ExecuteTemplate(w, "index.html", nil)
+	err = parsedtemplates.index.Execute(w, nil)
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to render /")
 	}
@@ -144,7 +144,7 @@ WHERE id = ANY (string_to_array($1, ','))
 		}
 	}
 
-	err = tmpl.ExecuteTemplate(w, "account.html", struct {
+	err = parsedtemplates.account.Execute(w, struct {
 		Username string
 		Email    string
 		Boards   []Board

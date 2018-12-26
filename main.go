@@ -4,10 +4,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"text/template"
+	"permissionsfortrello/public"
+	"permissionsfortrello/tmpl"
 	"time"
 
-	"github.com/gobuffalo/packr/v2"
+	"github.com/arschles/go-bindata-html-template"
+	"github.com/elazarl/go-bindata-assetfs"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/graphql-go/graphql"
@@ -39,11 +41,14 @@ var c *oauth.Consumer
 var pg *sqlx.DB
 var rds *redis.Client
 var ms3 *minio.Client
-var tmpl *template.Template
 var store sessions.Store
 var router *mux.Router
 var schema graphql.Schema
 var log = zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr})
+var parsedtemplates struct {
+	index   *template.Template
+	account *template.Template
+}
 
 func main() {
 	err = envconfig.Process("", &s)
@@ -66,7 +71,8 @@ func main() {
 	)
 
 	// templates
-	tmpl = template.Must(template.New("~").ParseGlob("templates/*.html"))
+	parsedtemplates.index = template.Must(template.New("index", tmpl.Asset).Parse("templates/index.html"))
+	parsedtemplates.account = template.Must(template.New("account", tmpl.Asset).Parse("templates/account.html"))
 
 	// oauth consumer
 	c = oauth.NewConsumer(
@@ -103,8 +109,8 @@ func main() {
 		}
 	}
 
-	// static assets
-	pubBox := packr.New("public", "./public")
+	// public http assets
+	httpPublic := &assetfs.AssetFS{Asset: public.Asset, AssetDir: public.AssetDir, Prefix: "public"}
 
 	// define routes
 	router = mux.NewRouter()
@@ -116,11 +122,11 @@ func main() {
 	router.Path("/setBoard").Methods("POST").HandlerFunc(handleSetupBoard)
 	router.Path("/_/webhooks/board").Methods("HEAD").HandlerFunc(returnOk)
 	router.Path("/_/webhooks/board").Methods("POST").HandlerFunc(handleWebhook)
-	router.PathPrefix("/public/").Methods("GET").Handler(http.FileServer(pubBox))
+	router.PathPrefix("/public/").Methods("GET").Handler(http.FileServer(httpPublic))
 	router.Path("/favicon.ico").Methods("GET").HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "image/svg+xml")
-			iconf, _ := pubBox.Open("icon.svg")
+			iconf, _ := httpPublic.Open("icon.svg")
 			fstat, _ := iconf.Stat()
 			http.ServeContent(w, r, "icon.svg", fstat.ModTime(), iconf)
 			return

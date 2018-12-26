@@ -9,5 +9,4 @@ bundle.js
 *.DS_Store
 *package-lock.json
 permissionsfortrello
-packrd
-main-packr.go
+bindata.go
