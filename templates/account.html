@@ -1,4 +1,58 @@
-{{ template "head.html" . }}
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Permissions for Trello</title>
+<meta name="description" content="Fine-grained user permissions for Trello boards">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+<link href="https://overpass-30e2.kxcdn.com/overpass.css" rel="stylesheet">
+
+<style>
+* { padding: 0; margin: 0; outline: none; border: none; appearance: none; font-family: 'overpass', sans-serif; color: #46494d; border-radius: none; }
+html, body { background: #fff; text-align: center; }
+body { padding: 8px; }
+.main { padding: 20px 0; max-width: 640px; min-height: 100vh; height: 100%; background: #fff; margin: 0 auto; text-align: left; }
+h1, h3, p { margin-bottom: 20px; }
+h1 { line-height: 1.2; font-weight: 600; font-size: 36px; color: #232526; margin-bottom: 60px; }
+h3 { line-height: 1.2; font-weight: 600; font-size: 24px; color: #232526; }
+p { line-height: 1.6; font-size: 16px; font-weight: 400; }
+strong { font-weight: 800; }
+small { font-size: 14px; color: #33383c; margin: 24px 0; font-weight: 300; }
+span { color: #0082A0; }
+img { max-width: 100%; display: block; margin: 0 0 20px 0; }
+
+a { color: #0082A0; }
+
+input, button, .button { text-decoration: none; padding: 12px; box-sizing: border-box; font-size: 16px; width: 100%; display: block; }
+input { background: #f5f7fa; font-weight: 400; }
+button, .button { background: #0082A0; color: #fff; font-weight: 700; padding: 12px 24px; }
+form { margin: 52px 0; }
+
+@media (min-width: 800px) {
+  input, button, .button { width: auto; display: inline-block; }
+  input { width: 400px; }
+  .demo { max-width: 140%; display: flex; margin: 40px -20% 40px -20%; }
+  .demo > * { display: block; }
+  .main { margin: 60px auto; }
+}
+</style>
+
+<script>;(function (d, s, c) {
+var x, h, n = Date.now()
+tc = function (p) {
+  m = s.getItem('_tcx') > n ? s.getItem('_tch') : 'pipoca-berimbau'
+  x = new XMLHttpRequest()
+  x.addEventListener('load', function () {
+    if (x.status == 200) {
+      s.setItem('_tch', x.responseText)
+      s.setItem('_tcx', n + 14400000)
+    }
+  })
+  x.open('GET', 'https://visitantes.alhur.es/'+m+'.xml?r='+d.referrer+'&c='+c+(p?'&p='+p:''))
+  x.send()
+}
+tc()
+})(document, localStorage, '91o2i47k');</script>
 
 <style>
 button { width: 102px; }
